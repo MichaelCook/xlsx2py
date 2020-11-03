@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+# Copyright (C) Michael Cook <michael@waxrat.com>
+import sys
+import argparse
+import re
+import datetime
+import openpyxl
+from openpyxl.formula.tokenizer import Token
+
+# Examples:
+#
+# xlsx2py --print='Sheet_main.N97()' foo.xlsx > foo.py && python3 foo.py
+#
+
+parser = argparse.ArgumentParser(description="""
+Convert a .xlsx file to a .py file
+""")
+parser.add_argument('--print', '-p', action='append', default=[], help="""
+Add a print statement to the end of the output.
+Can be given multiple times
+""")
+parser.add_argument('xlsx')
+OPTS = parser.parse_args()
+del parser
+
+NONSYM_RE = re.compile(r'\W+')
+
+def make_sheet_name(title):
+    name = NONSYM_RE.sub('_', title)
+    return f'Sheet_{name}'
+
+RANGE_RE = re.compile(r'^'
+                      r"((?P<sheet>'.*'|.*)!)?"
+                      r'\$?(?P<start_col>[A-Z]+)\$?(?P<start_row>[0-9]+)'
+                      r'(:\$?(?P<end_col>[A-Z]+)\$?(?P<end_row>[0-9]+))?'
+                      r'$')
+
+def column_letters_to_index(letters: str):
+    """
+    A -> 1, B -> 2, ..., Z -> 26, AA -> 27, AB -> 28, ...
+    """
+    index = 0
+    for letter in letters:
+        c = ord(letter) - ord('A') + 1
+        if c < 1 or c > 26:
+            raise Exception(f'Invalid column letter {letter!r}')
+        index = index * 26 + c
+    return index
+
+def range_to_python(sheet_name, text):
+    match = RANGE_RE.match(text)
+    if not match:
+        return f'OOPS({text!r})'
+    match = match.groupdict()
+
+    sheet = match['sheet']
+    if sheet is None:
+        sheet = sheet_name
+    else:
+        if len(sheet) >= 2 and sheet.startswith("'") and sheet.endswith("'"):
+            sheet = sheet[1:-1]
+        sheet = make_sheet_name(sheet)
+
+    start_col = match['start_col']
+    start_row = match['start_row']
+    end_col = match['end_col']
+    end_row = match['end_row']
+
+    start_coli = column_letters_to_index(start_col)
+    start_rowi = int(start_row)
+
+    if end_col is None:
+        end_coli = start_coli
+        end_rowi = start_rowi
+    else:
+        end_coli = column_letters_to_index(end_col)
+        end_rowi = int(end_row)
+
+    if (start_coli, start_rowi) == (end_coli, end_rowi):
+        return f'{sheet}.{start_col}{start_row}()'
+    return f'RANGE({sheet}, {start_coli}, {start_rowi}, {end_coli}, {end_rowi})'
+
+def token_to_python(sheet_name: str, token: Token):
+    # see https://openpyxl.readthedocs.io/en/stable/formula.html
+
+    if token.type == Token.FUNC:
+        return token.value.removeprefix('_xlfn.')
+    if token.type == Token.SEP:
+        return f'{token.value} '
+    if token.type == Token.OP_IN:
+        if token.value == '=':
+            return ' == '
+        return f' {token.value} '
+    if token.type == Token.OP_PRE:
+        return f' {token.value}'
+    if token.type in (Token.OP_POST, Token.PAREN):
+        return token.value
+    if token.type == Token.WSPACE:
+        return ''
+
+    if token.type == Token.OPERAND:
+        if token.subtype in (Token.NUMBER, Token.TEXT):
+            return token.value
+        if token.subtype == Token.RANGE:
+            return range_to_python(sheet_name, token.value)
+
+    return f'OOPS({token.type!r},{token.subtype!r},{token.value!r})'
+
+def cell_to_python(sheet_name, cell):
+    v = cell.value
+    if isinstance(v, datetime.datetime):
+        return f'DATE({v.year}, {v.month}, {v.day}, {v.hour}, {v.minute})'
+    if isinstance(v, datetime.time):
+        return f'TIME({v.hour}, {v.minute}, {v.second}, {v.microsecond})'
+    if not isinstance(v, str):
+        return repr(v)
+    if not v.startswith('='):
+        return repr(v)
+    tokens = openpyxl.formula.Tokenizer(v).items
+    return ''.join(map(lambda token: token_to_python(sheet_name, token), tokens))
+
+def set_cell(cells, column: int, row :int, value: str):
+    """
+    `cells` is a (potentially empty) list rows.
+    Each row is a (potentially empty) list of values associated with the cells of that row.
+    `column` and `row` are 1-based indexes.
+    Set the (column-1,row-1) entry to `value`, expanding `cells` as needed
+    """
+    cells.extend([] for _ in range(row - len(cells)))
+    columns = cells[row - 1]
+    columns.extend(None for _ in range(column - len(columns)))
+    columns[column - 1] = value
+
+def put_sheet_descriptor(name: str, descriptor):
+    """
+    `descriptor` is a tuple of rows.
+    Each row is a tuple of cell values.
+    """
+    print(f'\n{name} = (')
+    for row in descriptor:
+        # Empty row becomes (), the empty tuple.
+        # Row of a single cell needs a trailing comma to make it a Python tuple: (x,).
+        # Longer rows have the cells separated by commas, and the optional trailing comma is included.
+        print('    (', end='')
+        cells = list('None' if cell is None else cell for cell in row)
+        if cells:
+            print(', '.join(cells), ',', sep='', end='')
+        print('),')
+    print(f')')
+
+def main():
+    wb = openpyxl.load_workbook(OPTS.xlsx)
+    print('from Xlsx import *')
+    for ws in wb.worksheets:
+        sheet_name = make_sheet_name(ws.title)
+        print(f'\nclass {sheet_name}:')
+        cell_methods = []
+        for row in ws.rows:
+            first = True
+            for cell in row:
+                if cell.value is None:
+                    continue
+                if first:
+                    print(f'    # row {cell.row}')
+                    first = False
+                print(f'    @staticmethod')
+                print(f'    def {cell.coordinate}():')
+                print(f'        return {cell_to_python(sheet_name, cell)}')
+                set_cell(cell_methods, cell.column, cell.row,
+                         f'{sheet_name}.{cell.coordinate}')
+
+        put_sheet_descriptor(f'{sheet_name}.cell_methods', cell_methods)
+
+    for expr in OPTS.print:
+        print(f'print({expr})')
+
+main()
