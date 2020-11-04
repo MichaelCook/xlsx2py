@@ -8,16 +8,17 @@ file to a Python .py script.
 ./xlsx2py example.xlsx > example.py
 ```
 
-To run the pytest unit test:
-
-```shell
-python3 -m pytest -sv
-```
-
 Another example:
 
 ```shell
 $ ./xlsx2py --print 'Sheet_Sheet2.A2()' example.xlsx | python3
 13.5
 $
+```
+
+See the pytest unit test for more examples.
+To run the pytest unit test:
+
+```shell
+python3 -m pytest -sv
 ```
