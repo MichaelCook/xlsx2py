@@ -16,7 +16,7 @@ def RANGE(sheet, start_col: int, start_row: int, end_col: int, end_row: int):
             if cell_method is not None:
                 yield cell_method()
 
-def IF(cond, if_value, then_value=None):
+def IF(cond, if_value, then_value=0):
     return if_value if cond else then_value
 
 def DATE(year, month, day, hour, minute):
