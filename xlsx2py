@@ -162,8 +162,10 @@ def put_sheet_descriptor(name: str, descriptor):
 def main():
     wb = openpyxl.load_workbook(OPTS.xlsx)
     print('from Xlsx import *')
+    sheet_names = []
     for ws in wb.worksheets:
         sheet_name = make_sheet_name(ws.title)
+        sheet_names.append(sheet_name)
         print(f'\nclass {sheet_name}:')
         cell_methods = []
         for row in ws.rows:
@@ -186,6 +188,11 @@ def main():
                 set_cell(cell_methods, cell.column, cell.row, f'{sheet_name}.{cell.coordinate}')
 
         put_sheet_descriptor(f'{sheet_name}.cell_methods', cell_methods)
+
+    print('SHEETS = (')
+    for sheet_name in sheet_names:
+        print(f'    {sheet_name},')
+    print(')')
 
     for expr in OPTS.print:
         print(f'print({expr})')
