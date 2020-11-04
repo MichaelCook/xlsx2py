@@ -176,6 +176,12 @@ def main():
                     first = False
                 print(f'    @staticmethod')
                 print(f'    def {cell.coordinate}():')
+                comment = getattr(cell, 'comment')
+                if comment:
+                    print(f'        """')
+                    for line in comment.text.split('\n'):
+                        print(f'        {line}')
+                    print(f'        """')
                 print(f'        return {cell_to_python(sheet_name, cell)}')
                 set_cell(cell_methods, cell.column, cell.row, f'{sheet_name}.{cell.coordinate}')
 
