@@ -7,11 +7,6 @@ import datetime
 import openpyxl
 from openpyxl.formula.tokenizer import Token
 
-# Examples:
-#
-# xlsx2py --print='Sheet_main.N97()' foo.xlsx > foo.py && python3 foo.py
-#
-
 parser = argparse.ArgumentParser(description="""
 Convert a .xlsx file to a .py file
 """)
@@ -48,6 +43,10 @@ def column_letters_to_index(letters: str):
     return index
 
 def range_to_python(sheet_name, text):
+    """
+    `text` is a string representation of a range, like A1:B2.
+    Convert `text` to Python code
+    """
     match = RANGE_RE.match(text)
     if not match:
         return f'OOPS({text!r})'
@@ -80,17 +79,24 @@ def range_to_python(sheet_name, text):
         return f'{sheet}.{start_col}{start_row}()'
     return f'RANGE({sheet}, {start_coli}, {start_rowi}, {end_coli}, {end_rowi})'
 
+OPERATOR_TO_PYTHON = {
+    '=': '==',
+    '<>': '!=',
+}
+
 def token_to_python(sheet_name: str, token: Token):
-    # see https://openpyxl.readthedocs.io/en/stable/formula.html
+    """
+    `token` is a part of a formula as parsed by openpyxl.formula.Tokenizer.
+    Convert the token to Python code.
+    See https://openpyxl.readthedocs.io/en/stable/formula.html
+    """
 
     if token.type == Token.FUNC:
         return token.value.removeprefix('_xlfn.')
     if token.type == Token.SEP:
         return f'{token.value} '
     if token.type == Token.OP_IN:
-        if token.value == '=':
-            return ' == '
-        return f' {token.value} '
+        return f' {OPERATOR_TO_PYTHON.get(token.value, token.value)} '
     if token.type == Token.OP_PRE:
         return f' {token.value}'
     if token.type in (Token.OP_POST, Token.PAREN):
@@ -107,6 +113,9 @@ def token_to_python(sheet_name: str, token: Token):
     return f'OOPS({token.type!r},{token.subtype!r},{token.value!r})'
 
 def cell_to_python(sheet_name, cell):
+    """
+    Convert the given `cell` value to Python code
+    """
     v = cell.value
     if isinstance(v, datetime.datetime):
         return f'DATE({v.year}, {v.month}, {v.day}, {v.hour}, {v.minute})'
@@ -121,7 +130,7 @@ def cell_to_python(sheet_name, cell):
 
 def set_cell(cells, column: int, row :int, value: str):
     """
-    `cells` is a (potentially empty) list rows.
+    `cells` is a (potentially empty) list of rows.
     Each row is a (potentially empty) list of values associated with the cells of that row.
     `column` and `row` are 1-based indexes.
     Set the (column-1,row-1) entry to `value`, expanding `cells` as needed
@@ -133,14 +142,16 @@ def set_cell(cells, column: int, row :int, value: str):
 
 def put_sheet_descriptor(name: str, descriptor):
     """
-    `descriptor` is a tuple of rows.
-    Each row is a tuple of cell values.
+    `descriptor` is a list of rows.
+    Each row is a list of cell values.
+    Print this `descriptor` as a Python tuple of tuples
     """
     print(f'\n{name} = (')
     for row in descriptor:
         # Empty row becomes (), the empty tuple.
         # Row of a single cell needs a trailing comma to make it a Python tuple: (x,).
-        # Longer rows have the cells separated by commas, and the optional trailing comma is included.
+        # Longer rows have the cells separated by commas, and the optional
+        # trailing comma is included.
         print('    (', end='')
         cells = list('None' if cell is None else cell for cell in row)
         if cells:
@@ -166,8 +177,7 @@ def main():
                 print(f'    @staticmethod')
                 print(f'    def {cell.coordinate}():')
                 print(f'        return {cell_to_python(sheet_name, cell)}')
-                set_cell(cell_methods, cell.column, cell.row,
-                         f'{sheet_name}.{cell.coordinate}')
+                set_cell(cell_methods, cell.column, cell.row, f'{sheet_name}.{cell.coordinate}')
 
         put_sheet_descriptor(f'{sheet_name}.cell_methods', cell_methods)
 

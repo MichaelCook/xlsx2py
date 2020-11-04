@@ -6,7 +6,6 @@ import subprocess
 
 @pytest.fixture(scope='module')
 def example_py():
-    print('example_py...')
     code = subprocess.check_output(['./xlsx2py', 'example.xlsx'], encoding='utf-8')
     with open('example.py', 'wt') as fh:
         fh.write(code)
@@ -71,3 +70,51 @@ def test_date(example_py):
 def test_time(example_py):
     from example import Sheet_Foo_Bar as fb
     assert fb.A5() == approx(0.538352575862974)  # =TIME(12, 55, 13, 662555)
+
+def test_if(example_py):
+    from example import Sheet_Sheet1 as sh1
+
+    assert sh1.A27()
+    assert sh1.B27()
+    assert sh1.C27()
+    assert sh1.D27()
+    assert sh1.E27()
+    assert sh1.F27()
+
+    assert not sh1.A28()
+    assert not sh1.B28()
+    assert not sh1.C28()
+    assert not sh1.D28()
+    assert not sh1.E28()
+    assert not sh1.F28()
+
+    assert sh1.A29() == "yup"
+    assert sh1.B29() == "yup"
+    assert sh1.C29() == "yup"
+    assert sh1.D29() == "yup"
+    assert sh1.E29() == "yup"
+    assert sh1.F29() == "yup"
+
+    assert sh1.A30() == "yup"
+    assert sh1.B30() == "yup"
+    assert sh1.C30() == "yup"
+    assert sh1.D30() == "yup"
+    assert sh1.E30() == "yup"
+    assert sh1.F30() == "yup"
+
+    assert sh1.A31() == "yup"
+    assert sh1.B31() == "yup"
+    assert sh1.C31() == "yup"
+    assert sh1.D31() == "yup"
+    assert sh1.E31() == "yup"
+    assert sh1.F31() == "yup"
+
+    assert not sh1.A32()
+    assert not sh1.B32()
+    assert not sh1.C32()
+    assert not sh1.D32()
+    assert not sh1.E32()
+    assert not sh1.F32()
+
+    assert sh1.A34()        # =TRUE()
+    assert not sh1.A35()    # =FALSE()
