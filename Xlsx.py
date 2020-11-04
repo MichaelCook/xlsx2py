@@ -85,3 +85,20 @@ def TRUE():
 
 def FALSE():
     return False
+
+def values_by_row(sheet):
+    """
+    Evaluate all the cells in the given sheet and yield them row by row.
+    Each row is yielded as a generator of cell values for that row
+    """
+    for row in sheet.cell_methods:
+        yield (cell_method() if cell_method else None
+               for cell_method in row)
+
+def sheet_to_tsv(sheet, fileobj):
+    """
+    Convert the sheet to a text file as tab-separated values
+    """
+    for row in values_by_row(sheet):
+        fileobj.write('\t'.join('' if cell_value is None else str(cell_value)
+                                for cell_value in row) + '\n')

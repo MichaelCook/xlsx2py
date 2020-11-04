@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+import sys
+import example
+import Xlsx
+
+print('-- Sheet1 --')
+Xlsx.sheet_to_tsv(example.Sheet_Sheet1, sys.stdout)
+
+print('\n-- Sheet2 --')
+Xlsx.sheet_to_tsv(example.Sheet_Sheet2, sys.stdout)
+
+print('\n-- Foo Bar --')
+Xlsx.sheet_to_tsv(example.Sheet_Foo_Bar, sys.stdout)
