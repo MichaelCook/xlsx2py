@@ -95,9 +95,6 @@ def TRUE():
 def FALSE():
     return False
 
-def ISFORMULA(arg):
-    return False        # TODO: implement ISFORMULA
-
 def values_by_row(sheet):
     """
     Evaluate all the cells in the given sheet and yield them row by row.

@@ -178,7 +178,7 @@ def function_to_python(sheet_name: str, function_name: str, tokens: list[Token])
         arg = range_to_python(sheet_name, arg.value)
         if not arg.endswith('()'):
             raise Exception('Wrong arguments for ISFORMULA: {args}')
-        return f'ISFORMULA({arg[:-2]})'
+        return f'{arg[:-2]} in {sheet_name}.formula_methods'
 
     args = ', '.join(tokens_to_python(sheet_name, expr) for expr in args)
     return f'{function_name}({args})'
@@ -190,8 +190,9 @@ OPERATOR_TO_PYTHON = {
 
 def clean_function_name(value: str):
     """
-    IF(' -> 'IF'
-    '_xlfn.ISFORMULA(' -> ISFORMULA
+    Clean up the function name:
+    'IF(' -> 'IF'
+    '_xlfn.ISFORMULA(' -> 'ISFORMULA'
     """
     return value.removesuffix('(').removeprefix('_xlfn.')
 
@@ -239,7 +240,7 @@ def tokens_to_python(sheet_name: str, tokens: list[Token]):
         elif token.type == Token.FUNC and token.subtype == Token.OPEN:
             code += function_to_python(sheet_name, clean_function_name(token.value), tokens)
         else:
-            raise Exception(f'Unexpected {token}')
+            raise Exception(f'Unexpected: {token}')
     return code
 
 def formula_to_python(sheet_name: str, formula: str):
@@ -302,6 +303,7 @@ def main():
         sheet_names.append(sheet_name)
         print(f'\nclass {sheet_name}(metaclass=SheetType):')
         cell_methods = []
+        formula_methods = []
         for row in ws.rows:
             first = True
             for cell in row:
@@ -319,9 +321,19 @@ def main():
                         print(f'        {line}')
                     print(f'        """')
                 print(f'        return {cell_to_python(sheet_name, cell)}')
+                print()
+
                 set_cell(cell_methods, cell.column, cell.row, f'{sheet_name}.{cell.coordinate}')
 
+                if isinstance(cell.value, str) and cell.value.startswith('='):
+                    formula_methods.append(f'{sheet_name}.{cell.coordinate}')
+
         put_sheet_descriptor(f'{sheet_name}.cell_methods', cell_methods)
+
+        print(f'{sheet_name}.formula_methods = set((')
+        for name in formula_methods:
+            print(f'    {name},')
+        print(f'))')
 
     print('SHEETS = (')
     for sheet_name in sheet_names:
