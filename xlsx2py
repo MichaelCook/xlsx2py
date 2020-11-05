@@ -166,7 +166,7 @@ def main():
     for ws in wb.worksheets:
         sheet_name = make_sheet_name(ws.title)
         sheet_names.append(sheet_name)
-        print(f'\nclass {sheet_name}:')
+        print(f'\nclass {sheet_name}(metaclass=SheetType):')
         cell_methods = []
         for row in ws.rows:
             first = True
