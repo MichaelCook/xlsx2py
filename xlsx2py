@@ -49,7 +49,7 @@ def range_to_python(sheet_name, text):
     """
     match = RANGE_RE.match(text)
     if not match:
-        return f'OOPS({text!r})'
+        raise Exception(f'Malformed range {text!r}')
     match = match.groupdict()
 
     sheet = match['sheet']
@@ -79,40 +79,177 @@ def range_to_python(sheet_name, text):
         return f'{sheet}.{start_col}{start_row}()'
     return f'RANGE({sheet}, {start_coli}, {start_rowi}, {end_coli}, {end_rowi})'
 
+def expect_token(tokens, expect_type, expect_value):
+    if not tokens:
+        return None
+    if tokens[0].type != expect_type or tokens[0].value != expect_value:
+        return None
+    return tokens.pop(0)
+
+def get_expression_tokens(tokens: list[Token]):
+    """
+    Remove from `tokens` all the tokens of a complete expression.
+    That is, everything up to the next ',' or unmatched ')'.
+    Return a (possibly empty) list of the removed tokens
+    """
+    expression = []
+    while tokens:
+        token = tokens.pop(0)
+
+        if token.type == Token.PAREN:
+            if token.value == ')':
+                tokens.insert(0, token)
+                break
+            assert token.value == '('
+            expression.append(token)
+            expression.extend(get_expression_tokens(tokens))
+            token = expect_token(tokens, Token.PAREN, ')')
+            if not token:
+                raise Exception(f'Expected ): {tokens}')
+            expression.append(token)
+            continue
+
+        if token.type == Token.FUNC:
+            if token.value == ')':
+                assert token.subtype == Token.CLOSE
+                tokens.insert(0, token)
+                break
+            assert token.subtype == Token.OPEN
+            expression.append(token)
+
+            token = expect_token(tokens, Token.FUNC, ')')
+            if token:
+                expression.append(token)
+            else:
+                while True:
+                    expression.extend(get_expression_tokens(tokens))
+                    token = expect_token(tokens, Token.FUNC, ')')
+                    if token:
+                        expression.append(token)
+                        break
+                    token = expect_token(tokens, Token.SEP, ',')
+                    if not token:
+                        raise Exception(f'Expected ) or ,: {tokens}')
+                    expression.append(token)
+            continue
+
+        if token.type == Token.SEP and token.value == ',':
+            tokens.insert(0, token)
+            break
+
+        expression.append(token)
+    return expression
+
+def function_to_python(sheet_name: str, function_name: str, tokens: list[Token]):
+    args = []   # a list of arguments. Each argument is a list of expressions
+    if not expect_token(tokens, Token.FUNC, ')'):
+        #print(f'xxx function_to_python {function_name}: {tokens}', file=sys.stderr)
+        while True:
+            args.append(get_expression_tokens(tokens))
+            if expect_token(tokens, Token.FUNC, ')'):
+                break
+            if not expect_token(tokens, Token.SEP, ','):
+                raise Exception(f'Expected ) or ,: {tokens}')
+
+    if function_name == 'IF':
+        if len(args) == 3:
+            cond_expr, if_expr, else_expr = args
+            else_expr = tokens_to_python(sheet_name, else_expr)
+        elif len(args) == 2:
+            cond_expr, if_expr = args
+            else_expr = 0
+        else:
+            raise Exception('Wrong arguments for IF: {args}')
+        cond_expr = tokens_to_python(sheet_name, cond_expr)
+        if_expr = tokens_to_python(sheet_name, if_expr)
+        return f'{if_expr} if {cond_expr} else {else_expr}'
+
+    if function_name == 'ISFORMULA':
+        if len(args) != 1 or len(args[0]) != 1:
+            raise Exception('Wrong arguments for ISFORMULA: {args}')
+        # ISFORMULA expect exactly one argument: the coordinates of a cell.
+        #
+        # If given a range (even a range of a single cell like A1:A1),
+        # ISFORMULA returns false.  We don't currently try to handle that
+        # pathological case here
+        arg = args[0][0]
+        if arg.type != Token.OPERAND or arg.subtype != Token.RANGE:
+            raise Exception('Wrong arguments for ISFORMULA: {args}')
+        arg = range_to_python(sheet_name, arg.value)
+        if not arg.endswith('()'):
+            raise Exception('Wrong arguments for ISFORMULA: {args}')
+        return f'ISFORMULA({arg[:-2]})'
+
+    args = ', '.join(tokens_to_python(sheet_name, expr) for expr in args)
+    return f'{function_name}({args})'
+
 OPERATOR_TO_PYTHON = {
     '=': '==',
     '<>': '!=',
 }
 
-def token_to_python(sheet_name: str, token: Token):
+def clean_function_name(value: str):
     """
-    `token` is a part of a formula as parsed by openpyxl.formula.Tokenizer.
-    Convert the token to Python code.
+    IF(' -> 'IF'
+    '_xlfn.ISFORMULA(' -> ISFORMULA
+    """
+    return value.removesuffix('(').removeprefix('_xlfn.')
+
+def tokens_to_python(sheet_name: str, tokens: list[Token]):
+    """
+    Convert the tokens to Python code.
+    `tokens` as parsed by openpyxl.formula.Tokenizer.
     See https://openpyxl.readthedocs.io/en/stable/formula.html
     """
 
-    if token.type == Token.FUNC:
-        return token.value.removeprefix('_xlfn.')
-    if token.type == Token.SEP:
-        return f'{token.value} '
-    if token.type == Token.OP_IN:
-        return f' {OPERATOR_TO_PYTHON.get(token.value, token.value)} '
-    if token.type == Token.OP_PRE:
-        return f' {token.value}'
-    if token.type in (Token.OP_POST, Token.PAREN):
-        return token.value
-    if token.type == Token.WSPACE:
+    if not tokens:
         return ''
 
-    if token.type == Token.OPERAND:
-        if token.subtype in (Token.NUMBER, Token.TEXT):
-            return token.value
-        if token.subtype == Token.RANGE:
-            return range_to_python(sheet_name, token.value)
+    if tokens[0].type == Token.FUNC and tokens[0].subtype == Token.OPEN:
+        token = tokens.pop(0)
+        return function_to_python(sheet_name, clean_function_name(token.value), tokens)
 
-    return f'OOPS({token.type!r},{token.subtype!r},{token.value!r})'
+    if expect_token(tokens, Token.PAREN, '('):
+        code = tokens_to_python(sheet_name, tokens)
+        if not expect_token(tokens, Token.PAREN, ')'):
+            raise Exception('Expected ): {tokens}')
+        return f'({code})'
 
-def cell_to_python(sheet_name, cell):
+    # Collect and convert all tokens up to but not including the
+    # next separator or close paren
+    code = ''
+    while tokens:
+        token = tokens.pop(0)
+        if token.type == Token.OP_IN:
+            code += f' {OPERATOR_TO_PYTHON.get(token.value, token.value)} '
+        elif token.type == Token.OP_PRE:
+            code += f' {token.value}'
+        elif token.type == Token.OP_POST:
+            code += token.value
+        elif token.type == Token.PAREN:
+            code += token.value
+        elif token.type == Token.OPERAND and token.subtype == Token.NUMBER:
+            code += token.value
+        elif token.type == Token.OPERAND and token.subtype == Token.TEXT:
+            code += token.value
+        elif token.type == Token.OPERAND and token.subtype == Token.RANGE:
+            code += range_to_python(sheet_name, token.value)
+        elif token.type == Token.WSPACE:
+            pass
+        elif token.type == Token.FUNC and token.subtype == Token.OPEN:
+            code += function_to_python(sheet_name, clean_function_name(token.value), tokens)
+        else:
+            raise Exception(f'Unexpected {token}')
+    return code
+
+def formula_to_python(sheet_name: str, formula: str):
+    tokens = openpyxl.formula.Tokenizer(formula).items
+    code = tokens_to_python(sheet_name, tokens)
+    if tokens:
+        raise Exception(f'Trailing: {tokens}')
+    return code
+
+def cell_to_python(sheet_name: str, cell):
     """
     Convert the given `cell` value to Python code
     """
@@ -121,12 +258,9 @@ def cell_to_python(sheet_name, cell):
         return f'DATE({v.year}, {v.month}, {v.day}, {v.hour}, {v.minute})'
     if isinstance(v, datetime.time):
         return f'TIME({v.hour}, {v.minute}, {v.second}, {v.microsecond})'
-    if not isinstance(v, str):
-        return repr(v)
-    if not v.startswith('='):
-        return repr(v)
-    tokens = openpyxl.formula.Tokenizer(v).items
-    return ''.join(map(lambda token: token_to_python(sheet_name, token), tokens))
+    if isinstance(v, str) and v.startswith('='):
+        return formula_to_python(sheet_name, v)
+    return repr(v)
 
 def set_cell(cells, column: int, row :int, value: str):
     """

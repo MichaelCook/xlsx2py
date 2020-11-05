@@ -28,9 +28,6 @@ def RANGE(sheet, start_col: int, start_row: int, end_col: int, end_row: int):
             if cell_method is not None:
                 yield cell_method()
 
-def IF(cond, if_value, then_value=0):
-    return if_value if cond else then_value
-
 def DATE(year, month, day, hour, minute):
     """
     Convert to Excel time (floating point days since 1900)
@@ -97,6 +94,9 @@ def TRUE():
 
 def FALSE():
     return False
+
+def ISFORMULA(arg):
+    return False        # TODO: implement ISFORMULA
 
 def values_by_row(sheet):
     """
