@@ -95,6 +95,9 @@ def TRUE():
 def FALSE():
     return False
 
+def ISFORMULA(sheet, cell_method):
+    return cell_method in sheet.formula_methods
+
 def values_by_row(sheet):
     """
     Evaluate all the cells in the given sheet and yield them row by row.

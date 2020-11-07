@@ -178,7 +178,7 @@ def function_to_python(sheet_name: str, function_name: str, tokens: list[Token])
         arg = range_to_python(sheet_name, arg.value)
         if not arg.endswith('()'):
             raise Exception('Wrong arguments for ISFORMULA: {args}')
-        return f'{arg[:-2]} in {sheet_name}.formula_methods'
+        return f'ISFORMULA({sheet_name}, {arg[:-2]})'
 
     args = ', '.join(tokens_to_python(sheet_name, expr) for expr in args)
     return f'{function_name}({args})'

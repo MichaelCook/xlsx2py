@@ -118,3 +118,15 @@ def test_if(example_py):
 
     assert sh1.A34()        # =TRUE()
     assert not sh1.A35()    # =FALSE()
+
+def test_isformula(example_py):
+    from example import Sheet_Sheet1 as sh1
+
+    assert sh1.B37() == 'isformula – formula cell'
+    assert sh1.A37()
+    assert sh1.B38() == 'isformula – number cell'
+    assert not sh1.A38()
+    assert sh1.B39() == 'isformula – text cell'
+    assert not sh1.A38()
+    assert sh1.B40() == 'isformula – empty cell'
+    assert not sh1.A38()
