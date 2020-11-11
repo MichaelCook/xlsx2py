@@ -281,7 +281,7 @@ def put_sheet_descriptor(name: str, descriptor):
     Each row is a list of cell values.
     Print this `descriptor` as a Python tuple of tuples
     """
-    print(f'\n{name} = (')
+    print(f'{name} = (')
     for row in descriptor:
         # Empty row becomes (), the empty tuple.
         # Row of a single cell needs a trailing comma to make it a Python tuple: (x,).
