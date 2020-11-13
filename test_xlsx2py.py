@@ -130,3 +130,19 @@ def test_isformula(example_py):
     assert not sh1.A38()
     assert sh1.B40() == 'isformula – empty cell'
     assert not sh1.A38()
+
+def test_isblank(example_py):
+    from example import Sheet_Sheet1 as sh1
+
+    assert sh1.B42() == 'isblank - true'
+    assert sh1.A42()
+    assert sh1.B43() == 'isblank - false'
+    assert not sh1.A43()
+    assert sh1.B44() == 'isblank range of one blank'
+    assert sh1.A44()
+    assert sh1.B45() == 'isblank range - none is blank'
+    assert not sh1.A45()
+    assert sh1.B46() == 'isblank range - some are blank'
+    assert not sh1.A46()
+    assert sh1.B47() == 'isblank range - all are blank'
+    assert not sh1.A47()

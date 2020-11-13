@@ -63,18 +63,25 @@ def EDATE(date, months):
 
     return posix_to_xl_date(dt.timestamp())
 
+def all_cells(items):
+    """
+    `items` is zero or more cell values or generators of cell values (e.g., RANGE)
+    Yield all the values
+    """
+    for item in items:
+        if isinstance(item, types.GeneratorType):
+            for cell_value in item:
+                yield cell_value
+        else:
+            yield item
+
 def all_values(items):
     """
     `items` is zero or more cell values or generators of cell values (e.g., RANGE)
     Yield all the non-None values
     """
-    for item in items:
-        if item is None:
-            continue
-        if isinstance(item, types.GeneratorType):
-            for cell_value in item:
-                yield cell_value
-        else:
+    for item in all_cells(items):
+        if item is not None:
             yield item
 
 def all_numbers(items):
@@ -82,7 +89,7 @@ def all_numbers(items):
     `items` is zero or more cell values or generators of cell values (e.g., RANGE)
     Yield all the numeric values
     """
-    for item in all_values(items):
+    for item in all_cells(items):
         if isinstance(item, (int, float)):
             yield item
 
@@ -118,6 +125,12 @@ def FALSE():
 
 def ISFORMULA(sheet, cell_method):
     return cell_method in sheet.formula_methods
+
+def ISBLANK(*args):
+    values = list(all_cells(args))
+    if len(values) != 1:
+        return False
+    return values[0] is None
 
 def values_by_row(sheet):
     """
